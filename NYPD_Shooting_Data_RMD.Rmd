@@ -1,0 +1,149 @@
+---
+title: "NYPD Shooting Data"
+author: "BEM"
+date: "2024-06-18"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+This project was done to follow the basic steps of data analysis on a real-world data set, specifically historic shooting data from 2006 onward in New York. 
+  I wanted to see if my existing thoughts on how race and age correlate with shootings are confirmed or refuted by the analyses of other students, so I narrowed the scope of my analysis.
+
+
+## Step 0: Libraries used 
+### Checking out the library
+
+```{r libraries_used}
+
+library(tidyr)
+library(tidyverse)
+library(knitr)
+library(lubridate)
+library(ggplot2)
+library(dplyr)
+```
+
+## Step 1: Importing Data
+### Reading in raw data
+```{r reading_data}
+# Data from <"catalog.data.gov">
+raw_shoot_data <- read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD", show_col_types = FALSE)
+```
+
+## Step 2: Cleaning and Tidying
+### Narrowing down the data and making it workable
+
+```{r Tidying_Up}
+# I want to see how the frequency and fatality of shootings changes by time of day, so the data is narrowed to time of occurence and if the shooting was fatal or not
+time_data <- subset(raw_shoot_data, select = c(3,10))
+names(time_data)
+# Breaking the times up by hour of the day
+time_data$hours <- substring(time_data$OCCUR_TIME,1,2)
+#renaming for clarity
+time_data$if_fatal <- time_data$STATISTICAL_MURDER_FLAG
+
+```
+
+## Step 3: Visualizing
+### Visualising the data to look for patterns
+
+```{r Visualising}
+# making a bar chart of shootings by time of day
+time_data %>%
+  ggplot(aes(hours))+
+  theme_classic()+
+  geom_bar(position = "stack")+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  labs(title = "Shootings by Time of Day", x = "Time of Day", y = "Number of Shootings", col = "Blue")
+```
+
+### This has a clear pattern, with a low of shootings at 7-9 AM, with a high around midnight. I might expect fatalities to increase in proportion at nighttime because of lower visibility and general access to people, but I need to see how much of each hours' totals were fatal, so I'll use a stacked bar chart.
+
+
+```{r visualizing 2}
+#Making a stacked bar chart of both fatal and non-fatal shootings
+time_data %>%
+  ggplot(aes(hours, fill = if_fatal))+
+  geom_bar(position = "stack", alpha = 1.5)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  labs(title = "Shootings by Time of Day", y = "Shootings", x = "Hour of the Day")
+```
+
+### The difference is still not entirely clear, so I'll make the bar heights equal to see proportions.
+
+```{r visualizing 3}
+#Making a stacked bar chart of both fatal and non-fatal shootings
+time_data %>%
+  ggplot(aes(hours, fill = if_fatal))+
+  geom_bar(position = "fill", alpha = 1.5)+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())+
+  labs(title = "Shootings by Time of Day", y = "Fatality Proportion", x = "Hour of the Day")
+```
+
+### There seems to be a bit of a curve that peaks near the time that there are the least shootings, but I'm now more interested in what the distribution of shootings looks like if starting from 7am.
+
+
+
+
+## Step 4: Analyzing and Modeling
+### Moving the data so that it resembles a curve, plotting, and attempting a quadratic regression to fit the data
+
+```{r analyzing}
+# Turning fatalities into a boolean integer for comparison
+time_data$if_fatal <- as.integer(time_data$if_fatal)
+# Turning time into an integer for calculating
+time_data$hours <- strtoi(time_data$hours)
+# Moving time data so that 7am is at 0 using modulo 24 so it wraps back around
+time_data$hours <- (time_data$hours - 7) %% 24
+# Counting occurrences per hour
+counts <- c(1:24)
+for(i in 1:24){counts[i] <- length(time_data$hours[time_data$hours == i])}
+# Plotting now that time has been adjusted
+adjusted_hours <- c(1:24)
+plot(adjusted_hours, counts, main = "NYPD Shooting Data", xlab = "NY Time - 7 hours", ylab = "Shootings", col = "Red")
+```
+
+```{r modeling}
+# Fitting a quadratic curve as a guess
+adjusted_hours2 <- adjusted_hours^2
+quadratic_model <- lm(counts ~ adjusted_hours+adjusted_hours2)
+# Plotting 
+summary(quadratic_model)
+times <- seq(1, 24, 1)
+predicted <- predict(quadratic_model,list(times=times, times2 = times^2))
+plot(adjusted_hours, counts, main = "NYPD Shooting Data", xlab = "NY Time - 7 hours", ylab = "Shootings", col="Red")
+lines(times, predicted, col = "Blue")
+```
+
+It isn't the most satisfying match, with a poor R^2 value of 0.775, so I'll go up to a cubic regression.
+
+```{r modeling2}
+# Fitting a cubic curve for better fit
+adjusted_hours2 <- adjusted_hours^2
+adjusted_hours3 = adjusted_hours^3
+quadratic_model <- lm(counts ~ adjusted_hours+adjusted_hours2+adjusted_hours3)
+# Plotting 
+summary(quadratic_model)
+times <- seq(1, 24, 1)
+predicted <- predict(quadratic_model,list(times=times, times2 = times^2, times3 = times^3))
+plot(adjusted_hours, counts, main = "NYPD Shooting Data", xlab = "NY Time - 7 hours", ylab = "Shootings", col="Red")
+lines(times, predicted, col = "Blue")
+```
+
+This gives a much better fit to the data with an R^2 value of 0.966, but as shown in the model, it doesn't quite meet the high and low points that it needs to. It merits further analysis to be fitted to a statistical distribution.
+
+## Step 5: Identifying Bias, Conclusion
+
+  My own thoughts when it comes to race and shootings do exist, but I wanted to wait and see others' interpretations of that data to see if my beliefs are validated or not. I know of my own biases when it comes to trends in shooting data based on patterns I've seen before, so I chose to limit the variables to time of day and fatality.
+  Some bias could come from how the data was reported; it is unknown whether those who died from their injuries later are counted among the fatalities, so the guess that they increase at nighttime might still be possible.
+  These charts flatten the years and boros, so results could be skewed by an outlier in one of those areas (ex. if everyone in Queens agreed to use rubber bullets for one year, fatality proportion may be artificially low)
+  There is also no differentiation for officer-involved shootings, which the NYPD may be motivated to over- or under- report.
+  In summary, it appears that shootings do differ by time of day, with a high around midnight. A cubic curve fits the data reasonably well, but there is still room for improvement, so there may be a statistical distribution that it follows more closely. If a normal distribution, this is skewed somewhat, as there is a sharp dropoff of shootings between midnight and 7am. This data does not take factors such as time of year or location into account.
